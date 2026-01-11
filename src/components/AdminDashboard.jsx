@@ -10,6 +10,8 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
   const [userError, setUserError] = useState('');
   const [newUser, setNewUser] = useState({ username: '', password: '', shopName: '' });
   const [newItem, setNewItem] = useState({ name: '', category: '', image: '' });
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
 
   // Separate current and past orders
   const currentOrders = orders.filter(o => o.status === 'pending' || (o.status === 'confirmed' && !o.batchId));
@@ -48,10 +50,9 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
   };
 
   const handleLogoutClick = () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      onLogout();
-    }
-  };
+  setShowLogoutModal(true);
+};
+
 
   const handleConfirmAllOrders = () => {
     const pendingOrders = orders.filter(o => o.status === 'pending');
@@ -86,7 +87,7 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
   const handleApplyPrices = () => {
     const orderedItems = getOrderedItemsOnly();
     const allPricesSet = orderedItems.every(item => prices[item.id] && prices[item.id] > 0);
-    
+
     if (!allPricesSet) {
       alert('Please set prices for all ordered items');
       return;
@@ -118,7 +119,7 @@ ${combined.map((item, i) => `${i + 1}. ${item.name} (${item.category})
 Use this list for bulk purchasing
 ═══════════════════════════════════════
     `;
-    
+
     const blob = new Blob([pdfContent], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -142,11 +143,11 @@ Status: ${order.status.toUpperCase()}
 Items:
 ───────────────────────────────────────
 ${order.items.map((item, i) => {
-  const price = order.itemPrices?.[item.id] || 0;
-  const total = item.quantity * price;
-  return `${i + 1}. ${item.name}
+      const price = order.itemPrices?.[item.id] || 0;
+      const total = item.quantity * price;
+      return `${i + 1}. ${item.name}
    Qty: ${item.quantity} × ₹${price.toFixed(2)} = ₹${total.toFixed(2)}`;
-}).join('\n\n')}
+    }).join('\n\n')}
 
 ───────────────────────────────────────
 TOTAL AMOUNT: ₹${order.totalAmount?.toFixed(2) || '0.00'}
@@ -155,7 +156,7 @@ TOTAL AMOUNT: ₹${order.totalAmount?.toFixed(2) || '0.00'}
 Thank you for your order!
 ═══════════════════════════════════════
     `;
-    
+
     const blob = new Blob([receipt], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -534,6 +535,45 @@ Thank you for your order!
           </div>
         )}
       </div>
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm p-6 animate-fadeIn">
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-red-100 text-red-600 p-2 rounded-xl">
+                <LogOut className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800">
+                Confirm Logout
+              </h3>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+              Are you sure you want to logout from your account? You’ll need to log in again to continue.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="px-4 py-2 rounded-xl text-gray-600 font-semibold hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowLogoutModal(false);
+                  onLogout();
+                }}
+                className="px-5 py-2 rounded-xl text-white font-bold bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 shadow-lg transition"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(10px); }

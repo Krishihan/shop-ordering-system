@@ -17,12 +17,12 @@ const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLo
   const [currentOrder, setCurrentOrder] = useState([]);
   const [viewMode, setViewMode] = useState('create');
   const [editingOrderId, setEditingOrderId] = useState(null);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
 
   const handleLogoutClick = () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      onLogout();
-    }
-  };
+  setShowLogoutModal(true);
+};
 
   const userOrders = orders.filter(o => o.userId === user.id);
   const pendingOrder = userOrders.find(o => o.status === 'pending');
@@ -341,6 +341,45 @@ const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLo
           </div>
         )}
       </div>
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm p-6 animate-fadeIn">
+            
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-red-100 text-red-600 p-2 rounded-xl">
+                <LogOut className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800">
+                Confirm Logout
+              </h3>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+              Are you sure you want to logout from your account? You’ll need to log in again to continue.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="px-4 py-2 rounded-xl text-gray-600 font-semibold hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowLogoutModal(false);
+                  onLogout();
+                }}
+                className="px-5 py-2 rounded-xl text-white font-bold bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 shadow-lg transition"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       <style jsx>{`
         @keyframes fadeIn {
