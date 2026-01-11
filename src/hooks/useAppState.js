@@ -147,9 +147,15 @@ export const useAppState = () => {
         ...userData,
         role: 'user'
       });
+      return { success: true };
     } catch (error) {
       console.error('Error creating user:', error);
-      alert('Failed to create user. Please try again.');
+      if (error.message === 'USERNAME_EXISTS') {
+        return { success: false, error: 'Username already taken. Please choose a different username.' };
+      } else if (error.message === 'SHOPNAME_EXISTS') {
+        return { success: false, error: 'Shop name already exists. Please choose a different shop name.' };
+      }
+      return { success: false, error: 'Failed to create user. Please try again.' };
     }
   };
 

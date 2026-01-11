@@ -21,7 +21,23 @@ export const getAllUsers = async () => {
 };
 
 export const createUser = async (userData) => {
+  // Check if username already exists
   const usersCol = collection(db, 'users');
+  const usernameQuery = query(usersCol, where('username', '==', userData.username));
+  const usernameSnapshot = await getDocs(usernameQuery);
+  
+  if (!usernameSnapshot.empty) {
+    throw new Error('USERNAME_EXISTS');
+  }
+  
+  // Check if shop name already exists
+  const shopNameQuery = query(usersCol, where('shopName', '==', userData.shopName));
+  const shopNameSnapshot = await getDocs(shopNameQuery);
+  
+  if (!shopNameSnapshot.empty) {
+    throw new Error('SHOPNAME_EXISTS');
+  }
+  
   const docRef = await addDoc(usersCol, userData);
   return { id: docRef.id, ...userData };
 };

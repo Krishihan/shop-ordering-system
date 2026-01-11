@@ -1,25 +1,32 @@
 import React, { useState } from 'react';
-import { Users, Package, ShoppingCart, Plus, Trash2, LogOut, FileText, DollarSign, Edit2, BoxIcon } from 'lucide-react';
+import { Users, Package, ShoppingCart, Plus, Trash2, LogOut, FileText, DollarSign, Edit2, BoxIcon, Download, History } from 'lucide-react';
 
 const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onConfirmOrder, onApplyGlobalPrices, onCreateItem, onUpdateItem, onDeleteItem, onLogout }) => {
   const [view, setView] = useState('orders');
   const [showUserForm, setShowUserForm] = useState(false);
   const [showItemForm, setShowItemForm] = useState(false);
-  const [showPricing, setShowPricing] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [prices, setPrices] = useState({});
+  const [userError, setUserError] = useState('');
   const [newUser, setNewUser] = useState({ username: '', password: '', shopName: '' });
   const [newItem, setNewItem] = useState({ name: '', category: '', image: '' });
 
-  // Get confirmed orders that don't have prices yet
+  // Separate current and past orders
+  const currentOrders = orders.filter(o => o.status === 'pending' || (o.status === 'confirmed' && !o.batchId));
+  const pastOrders = orders.filter(o => o.status === 'completed' && o.batchId);
   const confirmedOrders = orders.filter(o => o.status === 'confirmed' && !o.batchId);
   const hasConfirmedOrders = confirmedOrders.length > 0;
 
-  const handleCreateUser = (e) => {
+  const handleCreateUser = async (e) => {
     e.preventDefault();
-    onCreateUser(newUser);
-    setNewUser({ username: '', password: '', shopName: '' });
-    setShowUserForm(false);
+    setUserError('');
+    const result = await onCreateUser(newUser);
+    if (result.success) {
+      setNewUser({ username: '', password: '', shopName: '' });
+      setShowUserForm(false);
+    } else {
+      setUserError(result.error);
+    }
   };
 
   const handleCreateItem = (e) => {
@@ -40,6 +47,12 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
     setShowItemForm(true);
   };
 
+  const handleLogoutClick = () => {
+    if (window.confirm('Are you sure you want to logout?')) {
+      onLogout();
+    }
+  };
+
   const handleConfirmAllOrders = () => {
     const pendingOrders = orders.filter(o => o.status === 'pending');
     if (pendingOrders.length === 0) {
@@ -53,7 +66,6 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
 
   const getCombinedOrder = () => {
     const combined = {};
-    
     confirmedOrders.forEach(order => {
       order.items.forEach(item => {
         if (combined[item.id]) {
@@ -63,7 +75,6 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
         }
       });
     });
-    
     return Object.values(combined);
   };
 
@@ -84,7 +95,6 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
     if (window.confirm(`Apply these prices to ${confirmedOrders.length} confirmed orders?`)) {
       onApplyGlobalPrices(prices);
       setPrices({});
-      setShowPricing(false);
       setView('orders');
     }
   };
@@ -92,30 +102,90 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
   const generateCombinedPDF = () => {
     const combined = getCombinedOrder();
     const pdfContent = `
-COMBINED ORDER FOR PURCHASE
-Generated: ${new Date().toLocaleDateString()}
+═══════════════════════════════════════
+    COMBINED ORDER FOR PURCHASE
+═══════════════════════════════════════
 
+Generated: ${new Date().toLocaleString()}
 Total Confirmed Orders: ${confirmedOrders.length}
 
 Items to Purchase:
-${combined.map(item => `${item.name} (${item.category}) - Quantity: ${item.quantity}`).join('\n')}
+───────────────────────────────────────
+${combined.map((item, i) => `${i + 1}. ${item.name} (${item.category})
+   Quantity: ${item.quantity} units`).join('\n\n')}
 
----
+═══════════════════════════════════════
 Use this list for bulk purchasing
+═══════════════════════════════════════
     `;
-    alert('Combined Order PDF (Demo):\n\n' + pdfContent);
+    
+    const blob = new Blob([pdfContent], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `combined-order-${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+  };
+
+  const generateUserReceipt = (order) => {
+    const user = users.find(u => u.id === order.userId);
+    const receipt = `
+═══════════════════════════════════════
+            ORDER RECEIPT
+═══════════════════════════════════════
+
+Shop: ${user?.shopName}
+Order ID: ${order.id.slice(0, 8)}
+Date: ${new Date(order.date).toLocaleString()}
+Status: ${order.status.toUpperCase()}
+
+Items:
+───────────────────────────────────────
+${order.items.map((item, i) => {
+  const price = order.itemPrices?.[item.id] || 0;
+  const total = item.quantity * price;
+  return `${i + 1}. ${item.name}
+   Qty: ${item.quantity} × ₹${price.toFixed(2)} = ₹${total.toFixed(2)}`;
+}).join('\n\n')}
+
+───────────────────────────────────────
+TOTAL AMOUNT: ₹${order.totalAmount?.toFixed(2) || '0.00'}
+───────────────────────────────────────
+
+Thank you for your order!
+═══════════════════════════════════════
+    `;
+    
+    const blob = new Blob([receipt], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `receipt-${user?.shopName}-${order.id.slice(0, 8)}.txt`;
+    a.click();
+  };
+
+  // Group past orders by batch
+  const groupOrdersByBatch = () => {
+    const batches = {};
+    pastOrders.forEach(order => {
+      if (!batches[order.batchId]) {
+        batches[order.batchId] = [];
+      }
+      batches[order.batchId].push(order);
+    });
+    return Object.entries(batches).reverse(); // Most recent first
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-white shadow-lg border-b border-indigo-100">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">Admin Dashboard</h1>
             <p className="text-gray-600 text-sm">Manage orders, users, and inventory</p>
           </div>
-          <button onClick={onLogout} className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+          <button onClick={handleLogoutClick} className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-all hover:scale-105">
             <LogOut className="w-4 h-4" />
             Logout
           </button>
@@ -125,62 +195,66 @@ Use this list for bulk purchasing
       {/* Navigation */}
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex gap-4 mb-6 flex-wrap">
-          <button onClick={() => setView('orders')} className={`px-6 py-2 rounded-lg font-medium transition-colors ${view === 'orders' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+          <button onClick={() => setView('orders')} className={`px-6 py-2 rounded-lg font-medium transition-all transform hover:scale-105 ${view === 'orders' ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
             <Package className="w-4 h-4 inline mr-2" />
-            All Orders
+            Current Orders
           </button>
-          <button onClick={() => setView('combined')} className={`px-6 py-2 rounded-lg font-medium transition-colors ${view === 'combined' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+          <button onClick={() => setView('history')} className={`px-6 py-2 rounded-lg font-medium transition-all transform hover:scale-105 ${view === 'history' ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+            <History className="w-4 h-4 inline mr-2" />
+            Past Orders
+          </button>
+          <button onClick={() => setView('combined')} className={`px-6 py-2 rounded-lg font-medium transition-all transform hover:scale-105 ${view === 'combined' ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
             <ShoppingCart className="w-4 h-4 inline mr-2" />
             Combined Order
-            {hasConfirmedOrders && <span className="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full">{confirmedOrders.length}</span>}
+            {hasConfirmedOrders && <span className="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full animate-pulse">{confirmedOrders.length}</span>}
           </button>
-          <button onClick={() => setView('pricing')} className={`px-6 py-2 rounded-lg font-medium transition-colors ${view === 'pricing' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+          <button onClick={() => setView('pricing')} className={`px-6 py-2 rounded-lg font-medium transition-all transform hover:scale-105 ${view === 'pricing' ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
             <DollarSign className="w-4 h-4 inline mr-2" />
             Set Prices
-            {hasConfirmedOrders && <span className="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full">!</span>}
+            {hasConfirmedOrders && <span className="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full animate-pulse">!</span>}
           </button>
-          <button onClick={() => setView('items')} className={`px-6 py-2 rounded-lg font-medium transition-colors ${view === 'items' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+          <button onClick={() => setView('items')} className={`px-6 py-2 rounded-lg font-medium transition-all transform hover:scale-105 ${view === 'items' ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
             <BoxIcon className="w-4 h-4 inline mr-2" />
             Items
           </button>
-          <button onClick={() => setView('users')} className={`px-6 py-2 rounded-lg font-medium transition-colors ${view === 'users' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+          <button onClick={() => setView('users')} className={`px-6 py-2 rounded-lg font-medium transition-all transform hover:scale-105 ${view === 'users' ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
             <Users className="w-4 h-4 inline mr-2" />
             Users
           </button>
         </div>
 
-        {/* Orders View */}
+        {/* Current Orders View */}
         {view === 'orders' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="bg-white rounded-xl shadow-lg p-6 animate-fadeIn">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">All Orders</h2>
+              <h2 className="text-xl font-semibold text-gray-800">Current Orders</h2>
               {orders.filter(o => o.status === 'pending').length > 0 && (
-                <button onClick={handleConfirmAllOrders} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm flex items-center gap-2">
+                <button onClick={handleConfirmAllOrders} className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all transform hover:scale-105 shadow-md text-sm flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Confirm All Pending
+                  Confirm All Pending ({orders.filter(o => o.status === 'pending').length})
                 </button>
               )}
             </div>
-            {orders.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No orders yet</p>
+            {currentOrders.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No current orders</p>
             ) : (
               <div className="space-y-4">
-                {orders.map(order => {
+                {currentOrders.map(order => {
                   const user = users.find(u => u.id === order.userId);
                   return (
-                    <div key={order.id} className="border rounded-lg p-4">
+                    <div key={order.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <p className="font-semibold text-gray-800">Order #{order.id.slice(0, 8)}</p>
                           <p className="text-sm text-gray-600">{user?.shopName}</p>
-                          <p className="text-sm text-gray-500">{new Date(order.date).toLocaleDateString()}</p>
+                          <p className="text-sm text-gray-500">{new Date(order.date).toLocaleString()}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${order.status === 'pending' ? 'bg-amber-100 text-amber-800' : order.status === 'confirmed' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${order.status === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
                             {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                           </span>
                           {order.status === 'pending' && (
-                            <button onClick={() => onConfirmOrder(order.id)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm">
+                            <button onClick={() => onConfirmOrder(order.id)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all transform hover:scale-105 text-sm">
                               Confirm
                             </button>
                           )}
@@ -194,12 +268,6 @@ Use this list for bulk purchasing
                           </div>
                         ))}
                       </div>
-                      {order.totalAmount && (
-                        <div className="mt-3 pt-3 border-t flex justify-between font-semibold">
-                          <span>Total Amount:</span>
-                          <span className="text-green-600">₹{order.totalAmount.toFixed(2)}</span>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -208,22 +276,86 @@ Use this list for bulk purchasing
           </div>
         )}
 
+        {/* Past Orders (History) View */}
+        {view === 'history' && (
+          <div className="bg-white rounded-xl shadow-lg p-6 animate-fadeIn">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Past Orders (Completed Batches)</h2>
+            {pastOrders.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No past orders yet</p>
+            ) : (
+              <div className="space-y-6">
+                {groupOrdersByBatch().map(([batchId, batchOrders], batchIndex) => (
+                  <div key={batchId} className="border-2 border-indigo-200 rounded-lg p-4 bg-gradient-to-r from-indigo-50 to-blue-50">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-semibold text-lg text-indigo-900">Batch #{batchIndex + 1}</h3>
+                      <span className="text-sm text-gray-600">{batchOrders.length} orders</span>
+                    </div>
+                    <div className="space-y-3">
+                      {batchOrders.map(order => {
+                        const user = users.find(u => u.id === order.userId);
+                        return (
+                          <div key={order.id} className="bg-white border rounded-lg p-4">
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <p className="font-semibold text-gray-800">Order #{order.id.slice(0, 8)}</p>
+                                <p className="text-sm text-gray-600">{user?.shopName}</p>
+                                <p className="text-sm text-gray-500">{new Date(order.date).toLocaleString()}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                  Completed
+                                </span>
+                                <button onClick={() => generateUserReceipt(order)} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all transform hover:scale-105" title="Download Receipt">
+                                  <Download className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-2 mb-3">
+                              {order.items.map(item => (
+                                <div key={item.id} className="flex justify-between text-sm">
+                                  <span className="text-gray-700">{item.name}</span>
+                                  <div className="text-right">
+                                    <span className="text-gray-600">x {item.quantity} </span>
+                                    <span className="text-gray-500">@ ₹{(order.itemPrices?.[item.id] || 0).toFixed(2)}</span>
+                                    <span className="ml-2 font-medium">₹{(item.quantity * (order.itemPrices?.[item.id] || 0)).toFixed(2)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="pt-3 border-t flex justify-between font-semibold">
+                              <span>Total Amount:</span>
+                              <span className="text-green-600">₹{order.totalAmount?.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Combined Order View */}
         {view === 'combined' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold mb-4">Combined Order (Confirmed Orders)</h2>
+          <div className="bg-white rounded-xl shadow-lg p-6 animate-fadeIn">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Combined Order (Confirmed Orders)</h2>
             {!hasConfirmedOrders ? (
-              <p className="text-gray-500 text-center py-8">No confirmed orders yet. Confirm orders first.</p>
+              <div className="text-center py-12">
+                <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No confirmed orders yet. Confirm orders first.</p>
+              </div>
             ) : (
               <div>
-                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg">
                   <p className="text-sm text-blue-800">
-                    <strong>{confirmedOrders.length}</strong> confirmed orders ready for pricing
+                    <strong className="text-lg">{confirmedOrders.length}</strong> confirmed orders ready for pricing
                   </p>
                 </div>
                 <div className="space-y-3">
                   {getCombinedOrder().map(item => (
-                    <div key={item.id} className="flex justify-between items-center border-b pb-3">
+                    <div key={item.id} className="flex justify-between items-center border-b pb-3 hover:bg-gray-50 px-2 rounded transition-colors">
                       <div>
                         <p className="font-semibold text-gray-800">{item.name}</p>
                         <p className="text-sm text-gray-600">{item.category}</p>
@@ -231,11 +363,11 @@ Use this list for bulk purchasing
                       <p className="text-lg font-bold text-indigo-600">Qty: {item.quantity}</p>
                     </div>
                   ))}
-                  <button onClick={generateCombinedPDF} className="mt-4 w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center justify-center gap-2">
+                  <button onClick={generateCombinedPDF} className="mt-4 w-full bg-gradient-to-r from-indigo-600 to-blue-600 text-white py-3 rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all transform hover:scale-105 shadow-lg font-medium flex items-center justify-center gap-2">
                     <FileText className="w-5 h-5" />
-                    Download Purchase List PDF
+                    Download Purchase List
                   </button>
-                  <button onClick={() => setView('pricing')} className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2">
+                  <button onClick={() => setView('pricing')} className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-3 rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all transform hover:scale-105 shadow-lg font-medium flex items-center justify-center gap-2">
                     <DollarSign className="w-5 h-5" />
                     Continue to Set Prices
                   </button>
@@ -247,13 +379,16 @@ Use this list for bulk purchasing
 
         {/* Pricing View */}
         {view === 'pricing' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold mb-4">Set Item Prices (One-Time)</h2>
+          <div className="bg-white rounded-xl shadow-lg p-6 animate-fadeIn">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Set Item Prices (One-Time)</h2>
             {!hasConfirmedOrders ? (
-              <p className="text-gray-500 text-center py-8">No confirmed orders waiting for pricing</p>
+              <div className="text-center py-12">
+                <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No confirmed orders waiting for pricing</p>
+              </div>
             ) : (
               <div>
-                <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="mb-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-lg">
                   <p className="text-sm text-amber-800 mb-2">
                     <strong>Important:</strong> Set prices once for all items. These prices will be applied to all {confirmedOrders.length} confirmed orders.
                   </p>
@@ -263,17 +398,17 @@ Use this list for bulk purchasing
                   {getOrderedItemsOnly().map(item => {
                     const combinedItem = getCombinedOrder().find(ci => ci.id === item.id);
                     return (
-                      <div key={item.id} className="border rounded-lg p-4">
-                        <div className="flex items-center gap-4 mb-2">
-                          <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded" />
+                      <div key={item.id} className="border-2 border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
+                        <div className="flex items-center gap-4 mb-3">
+                          <img src={item.image} alt={item.name} className="w-20 h-20 object-cover rounded-lg shadow-sm" />
                           <div className="flex-1">
-                            <p className="font-semibold text-gray-800">{item.name}</p>
+                            <p className="font-semibold text-gray-800 text-lg">{item.name}</p>
                             <p className="text-sm text-gray-600">{item.category}</p>
-                            <p className="text-sm text-indigo-600">Total Ordered: {combinedItem?.quantity || 0} units</p>
+                            <p className="text-sm font-medium text-indigo-600">Total Ordered: {combinedItem?.quantity || 0} units</p>
                           </div>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
                             Price per unit (₹)
                           </label>
                           <input
@@ -282,7 +417,7 @@ Use this list for bulk purchasing
                             placeholder="Enter price"
                             value={prices[item.id] || ''}
                             onChange={(e) => setPrices({ ...prices, [item.id]: parseFloat(e.target.value) })}
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                             required
                           />
                         </div>
@@ -290,7 +425,7 @@ Use this list for bulk purchasing
                     );
                   })}
                 </div>
-                <button onClick={handleApplyPrices} className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium text-lg">
+                <button onClick={handleApplyPrices} className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all transform hover:scale-105 shadow-lg font-medium text-lg">
                   Apply Prices to All {confirmedOrders.length} Orders
                 </button>
               </div>
@@ -300,27 +435,27 @@ Use this list for bulk purchasing
 
         {/* Items Management */}
         {view === 'items' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="bg-white rounded-xl shadow-lg p-6 animate-fadeIn">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Manage Items</h2>
-              <button onClick={() => { setShowItemForm(!showItemForm); setEditingItem(null); setNewItem({ name: '', category: '', image: '' }); }} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2">
+              <h2 className="text-xl font-semibold text-gray-800">Manage Items</h2>
+              <button onClick={() => { setShowItemForm(!showItemForm); setEditingItem(null); setNewItem({ name: '', category: '', image: '' }); }} className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all transform hover:scale-105 shadow-md flex items-center gap-2">
                 <Plus className="w-4 h-4" />
                 Add Item
               </button>
             </div>
 
             {showItemForm && (
-              <form onSubmit={handleCreateItem} className="mb-6 p-4 border rounded-lg bg-gray-50">
+              <form onSubmit={handleCreateItem} className="mb-6 p-4 border-2 border-indigo-200 rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 animate-slideDown">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input type="text" placeholder="Item Name" value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} className="px-4 py-2 border rounded-lg" required />
-                  <input type="text" placeholder="Category" value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="px-4 py-2 border rounded-lg" required />
-                  <input type="url" placeholder="Image URL" value={newItem.image} onChange={(e) => setNewItem({ ...newItem, image: e.target.value })} className="px-4 py-2 border rounded-lg" required />
+                  <input type="text" placeholder="Item Name" value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
+                  <input type="text" placeholder="Category" value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
+                  <input type="url" placeholder="Image URL" value={newItem.image} onChange={(e) => setNewItem({ ...newItem, image: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
                 </div>
                 <div className="flex gap-2 mt-4">
-                  <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                  <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all transform hover:scale-105">
                     {editingItem ? 'Update Item' : 'Create Item'}
                   </button>
-                  <button type="button" onClick={() => { setShowItemForm(false); setEditingItem(null); setNewItem({ name: '', category: '', image: '' }); }} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">
+                  <button type="button" onClick={() => { setShowItemForm(false); setEditingItem(null); setNewItem({ name: '', category: '', image: '' }); }} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-all">
                     Cancel
                   </button>
                 </div>
@@ -329,16 +464,16 @@ Use this list for bulk purchasing
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {items.map(item => (
-                <div key={item.id} className="border rounded-lg p-4">
-                  <img src={item.image} alt={item.name} className="w-full h-32 object-cover rounded-lg mb-3" />
+                <div key={item.id} className="border-2 border-gray-200 rounded-lg p-4 hover:shadow-lg transition-all transform hover:scale-105">
+                  <img src={item.image} alt={item.name} className="w-full h-32 object-cover rounded-lg mb-3 shadow-sm" />
                   <h3 className="font-semibold text-gray-800">{item.name}</h3>
                   <p className="text-sm text-gray-600 mb-3">{item.category}</p>
                   <div className="flex gap-2">
-                    <button onClick={() => handleEditItem(item)} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm flex items-center justify-center gap-1">
+                    <button onClick={() => handleEditItem(item)} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm flex items-center justify-center gap-1">
                       <Edit2 className="w-4 h-4" />
                       Edit
                     </button>
-                    <button onClick={() => onDeleteItem(item.id)} className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm flex items-center justify-center gap-1">
+                    <button onClick={() => onDeleteItem(item.id)} className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm flex items-center justify-center gap-1">
                       <Trash2 className="w-4 h-4" />
                       Delete
                     </button>
@@ -351,27 +486,32 @@ Use this list for bulk purchasing
 
         {/* Users View */}
         {view === 'users' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="bg-white rounded-xl shadow-lg p-6 animate-fadeIn">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Users</h2>
-              <button onClick={() => setShowUserForm(!showUserForm)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2">
+              <h2 className="text-xl font-semibold text-gray-800">Manage Users</h2>
+              <button onClick={() => { setShowUserForm(!showUserForm); setUserError(''); }} className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all transform hover:scale-105 shadow-md flex items-center gap-2">
                 <Plus className="w-4 h-4" />
                 Add User
               </button>
             </div>
 
             {showUserForm && (
-              <form onSubmit={handleCreateUser} className="mb-6 p-4 border rounded-lg bg-gray-50">
+              <form onSubmit={handleCreateUser} className="mb-6 p-4 border-2 border-indigo-200 rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 animate-slideDown">
+                {userError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-600 text-sm font-medium">❌ {userError}</p>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input type="text" placeholder="Username" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} className="px-4 py-2 border rounded-lg" required />
-                  <input type="password" placeholder="Password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} className="px-4 py-2 border rounded-lg" required />
-                  <input type="text" placeholder="Shop Name" value={newUser.shopName} onChange={(e) => setNewUser({ ...newUser, shopName: e.target.value })} className="px-4 py-2 border rounded-lg" required />
+                  <input type="text" placeholder="Username" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
+                  <input type="password" placeholder="Password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
+                  <input type="text" placeholder="Shop Name" value={newUser.shopName} onChange={(e) => setNewUser({ ...newUser, shopName: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
                 </div>
                 <div className="flex gap-2 mt-4">
-                  <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                  <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all transform hover:scale-105">
                     Create User
                   </button>
-                  <button type="button" onClick={() => setShowUserForm(false)} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">
+                  <button type="button" onClick={() => { setShowUserForm(false); setUserError(''); }} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-all">
                     Cancel
                   </button>
                 </div>
@@ -380,12 +520,12 @@ Use this list for bulk purchasing
 
             <div className="space-y-3">
               {users.filter(u => u.role === 'user').map(user => (
-                <div key={user.id} className="flex justify-between items-center border rounded-lg p-4">
+                <div key={user.id} className="flex justify-between items-center border-2 border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
                   <div>
                     <p className="font-semibold text-gray-800">{user.shopName}</p>
                     <p className="text-sm text-gray-600">Username: {user.username}</p>
                   </div>
-                  <button onClick={() => onDeleteUser(user.id)} className="p-2 text-red-600 hover:bg-red-50 rounded">
+                  <button onClick={() => onDeleteUser(user.id)} className="p-2 text-red-600 hover:bg-red-50 rounded transition-all transform hover:scale-110">
                     <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
@@ -394,6 +534,22 @@ Use this list for bulk purchasing
           </div>
         )}
       </div>
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+        .animate-slideDown {
+          animation: slideDown 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 };
