@@ -1,7 +1,35 @@
 import React, { useState } from 'react';
-import { Users, Package, ShoppingCart, Plus, Trash2, LogOut, FileText, DollarSign, Edit2, BoxIcon, Download, History } from 'lucide-react';
+import {
+  Users,
+  Package,
+  ShoppingCart,
+  Plus,
+  Trash2,
+  LogOut,
+  FileText,
+  DollarSign,
+  Edit2,
+  BoxIcon,
+  Download,
+  History,
+  Database // Added Database Icon
+} from 'lucide-react';
 
-const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onConfirmOrder, onApplyGlobalPrices, onCreateItem, onUpdateItem, onDeleteItem, onLogout }) => {
+// Added onInitializeDatabase to props
+const AdminDashboard = ({
+  users,
+  items,
+  orders,
+  onCreateUser,
+  onDeleteUser,
+  onConfirmOrder,
+  onApplyGlobalPrices,
+  onCreateItem,
+  onUpdateItem,
+  onDeleteItem,
+  onLogout,
+  // onInitializeDatabase // New Prop
+}) => {
   const [view, setView] = useState('orders');
   const [showUserForm, setShowUserForm] = useState(false);
   const [showItemForm, setShowItemForm] = useState(false);
@@ -9,9 +37,11 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
   const [prices, setPrices] = useState({});
   const [userError, setUserError] = useState('');
   const [newUser, setNewUser] = useState({ username: '', password: '', shopName: '' });
-  const [newItem, setNewItem] = useState({ name: '', category: '', image: '' });
+  const [newItem, setNewItem] = useState({ name: '', category: '', image: '', unit: 'BOX' });
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
+  // New state for initialization loading
+  const [isInitializing, setIsInitializing] = useState(false);
 
   // Separate current and past orders
   const currentOrders = orders.filter(o => o.status === 'pending' || (o.status === 'confirmed' && !o.batchId));
@@ -39,20 +69,31 @@ const AdminDashboard = ({ users, items, orders, onCreateUser, onDeleteUser, onCo
     } else {
       onCreateItem(newItem);
     }
-    setNewItem({ name: '', category: '', image: '' });
+    setNewItem({ name: '', category: '', image: '', unit: 'BOX' });
     setShowItemForm(false);
   };
 
   const handleEditItem = (item) => {
     setEditingItem(item);
-    setNewItem({ name: item.name, category: item.category, image: item.image });
+    // Add unit here
+    setNewItem({ name: item.name, category: item.category, image: item.image, unit: item.unit || 'BOX' });
     setShowItemForm(true);
   };
 
   const handleLogoutClick = () => {
-  setShowLogoutModal(true);
-};
+    setShowLogoutModal(true);
+  };
 
+  // // New Handler for Database Initialization
+  // const handleInitializeClick = async () => {
+  //   if (!onInitializeDatabase) return;
+  //   if (window.confirm("This will add default users and items if the database is empty. Continue?")) {
+  //     setIsInitializing(true);
+  //     await onInitializeDatabase();
+  //     setIsInitializing(false);
+  //     alert("Initialization check complete!");
+  //   }
+  // };
 
   const handleConfirmAllOrders = () => {
     const pendingOrders = orders.filter(o => o.status === 'pending');
@@ -165,7 +206,6 @@ Thank you for your order!
     a.click();
   };
 
-  // Group past orders by batch
   const groupOrdersByBatch = () => {
     const batches = {};
     pastOrders.forEach(order => {
@@ -174,7 +214,7 @@ Thank you for your order!
       }
       batches[order.batchId].push(order);
     });
-    return Object.entries(batches).reverse(); // Most recent first
+    return Object.entries(batches).reverse();
   };
 
   return (
@@ -186,10 +226,25 @@ Thank you for your order!
             <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">Admin Dashboard</h1>
             <p className="text-gray-600 text-sm">Manage orders, users, and inventory</p>
           </div>
-          <button onClick={handleLogoutClick} className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-all hover:scale-105">
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
+
+          <div className="flex gap-3">
+            {/* NEW: Database Initialization Button */}
+            {/* {onInitializeDatabase && (
+              <button 
+                onClick={handleInitializeClick} 
+                disabled={isInitializing}
+                className={`flex items-center gap-2 px-4 py-2 border border-indigo-200 text-indigo-700 rounded-lg transition-all ${isInitializing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-50 hover:scale-105'}`}
+              >
+                <Database className={`w-4 h-4 ${isInitializing ? 'animate-spin' : ''}`} />
+                {isInitializing ? 'Seeding...' : 'Seed DB'}
+              </button>
+            )} */}
+
+            <button onClick={handleLogoutClick} className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-all hover:scale-105">
+              <LogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -447,10 +502,47 @@ Thank you for your order!
 
             {showItemForm && (
               <form onSubmit={handleCreateItem} className="mb-6 p-4 border-2 border-indigo-200 rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 animate-slideDown">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input type="text" placeholder="Item Name" value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
-                  <input type="text" placeholder="Category" value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
-                  <input type="url" placeholder="Image URL" value={newItem.image} onChange={(e) => setNewItem({ ...newItem, image: e.target.value })} className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <input
+                    type="text"
+                    placeholder="Item Name"
+                    value={newItem.name}
+                    onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                    className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                  <input
+                    type="text"
+                    placeholder="Category"
+                    value={newItem.category}
+                    onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                    className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+
+                  {/* NEW UNIT SELECTOR */}
+                  <select
+                    value={newItem.unit}
+                    onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                    className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="BOX">BOX</option>
+                    <option value="CASE">CASE</option>
+                    <option value="EACH">EACH</option>
+                    <option value="BUNCH">BUNCH</option>
+                    <option value="HEAD">HEAD</option>
+                    <option value="BAG">BAG</option>
+                    <option value="KG">KG</option>
+                  </select>
+
+                  <input
+                    type="url"
+                    placeholder="Image URL"
+                    value={newItem.image}
+                    onChange={(e) => setNewItem({ ...newItem, image: e.target.value })}
+                    className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
                 </div>
                 <div className="flex gap-2 mt-4">
                   <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all transform hover:scale-105">

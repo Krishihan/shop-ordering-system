@@ -10,7 +10,8 @@ import {
   Package, 
   AlertCircle,
   ChevronRight,
-  Search
+  Search,
+  Tag // Added Tag icon for unit display
 } from 'lucide-react';
 
 const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLogout }) => {
@@ -175,6 +176,15 @@ const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLo
                     <div className="p-5 flex-1 flex flex-col">
                       <div className="flex-1">
                         <h3 className="text-lg font-bold text-gray-800 mb-1">{item.name}</h3>
+                        
+                        {/* Unit Display Update */}
+                        <div className="flex items-center gap-2 mb-3">
+                           <Tag className="w-3 h-3 text-indigo-500" />
+                           <p className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase">
+                             Sold by {item.unit || 'UNIT'}
+                           </p>
+                        </div>
+
                         <p className="text-sm text-gray-500 line-clamp-2">Premium quality item ready for order.</p>
                       </div>
                       
@@ -184,7 +194,7 @@ const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLo
                         className="mt-4 w-full bg-white text-indigo-600 border-2 border-indigo-100 py-2.5 rounded-xl hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all duration-300 font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-indigo-600"
                       >
                         <Plus className="w-4 h-4" />
-                        Add to Order
+                        Add {item.unit || 'Item'}
                       </button>
                     </div>
                   </div>
@@ -218,7 +228,7 @@ const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLo
                         <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
                           <div className="flex-1 min-w-0 mr-3">
                             <p className="font-semibold text-gray-800 truncate">{item.name}</p>
-                            <p className="text-xs text-gray-500">{item.category}</p>
+                            <p className="text-xs text-indigo-500 font-medium uppercase">{item.unit || 'UNIT'}</p>
                           </div>
                           <div className="flex items-center gap-3 bg-white px-2 py-1 rounded-lg shadow-sm border border-gray-100">
                             <button
@@ -227,7 +237,7 @@ const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLo
                             >
                               <Minus className="w-3 h-3" />
                             </button>
-                            <span className="w-6 text-center font-bold text-gray-800 text-sm">{item.quantity}</span>
+                            <span className="w-8 text-center font-bold text-gray-800 text-sm">{item.quantity}</span>
                             <button
                               onClick={() => updateQuantity(item.id, item.quantity + 1)}
                               className="w-6 h-6 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-green-600 transition-colors"
@@ -287,7 +297,7 @@ const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLo
                     <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
                       <div>
                         <div className="flex items-center gap-3 mb-1">
-                          <span className="text-lg font-bold text-gray-800">Order #{order.id}</span>
+                          <span className="text-lg font-bold text-gray-800">Order #{order.id.slice(0, 8)}</span>
                           <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 uppercase tracking-wider ${getStatusStyle(order.status)}`}>
                             {getStatusIcon(order.status)}
                             {order.status}
@@ -324,8 +334,11 @@ const UserDashboard = ({ user, items, orders, onCreateOrder, onUpdateOrder, onLo
                         {order.items.map(item => (
                           <div key={item.id} className="flex justify-between items-center text-sm p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
                             <div className="flex items-center gap-2">
-                              <span className="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center text-xs font-bold text-gray-600">{item.quantity}</span>
-                              <span className="text-gray-700 font-medium truncate max-w-[120px]">{item.name}</span>
+                              <span className="w-8 h-8 bg-gray-100 rounded-md flex items-center justify-center text-xs font-bold text-gray-600">{item.quantity}</span>
+                              <div className="flex flex-col">
+                                <span className="text-gray-700 font-medium truncate max-w-[120px]">{item.name}</span>
+                                <span className="text-[10px] text-gray-400 uppercase">{item.unit || 'UNIT'}</span>
+                              </div>
                             </div>
                             {order.totalAmount && (
                               <span className="font-semibold text-gray-500">₹{(item.quantity * (order.itemPrices?.[item.id] || 0)).toFixed(2)}</span>

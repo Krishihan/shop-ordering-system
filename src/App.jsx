@@ -3,6 +3,7 @@ import { useAppState } from './hooks/useAppState';
 import Login from './components/Login';
 import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
+// import { initializeFirebase } from './firebase/initializeData';
 
 
 const App = () => {
@@ -59,6 +60,7 @@ const App = () => {
         onUpdateItem={handleUpdateItem}
         onDeleteItem={handleDeleteItem}
         onLogout={handleLogout}
+        // onInitializeDatabase={initializeFirebase}
       />
     );
   }
